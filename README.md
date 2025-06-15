@@ -1,48 +1,155 @@
-![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
+# n8n-nodes-aws-athena-query
 
-# n8n-nodes-starter
+This is an n8n community node. It lets you execute SQL queries on AWS Athena in your n8n workflows.
 
-This repo contains example nodes to help you get started building your own custom integrations for [n8n](https://n8n.io). It includes the node linter and other dependencies.
+AWS Athena is an interactive query service that makes it easy to analyze data in Amazon S3 using standard SQL. With this node, you can run SQL queries against your data lake and incorporate the results into your n8n workflows.
 
-To make your custom node available to the community, you must create it as an npm package, and [submit it to the npm registry](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry).
+[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
-If you would like your node to be available on n8n cloud you can also [submit your node for verification](https://docs.n8n.io/integrations/creating-nodes/deploy/submit-community-nodes/).
+[Installation](#installation)  
+[Operations](#operations)  
+[Credentials](#credentials)  
+[Compatibility](#compatibility)  
+[Usage](#usage)  
+[Resources](#resources)  
 
-## Prerequisites
+## Installation
 
-You need the following installed on your development machine:
+Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
-* [git](https://git-scm.com/downloads)
-* Node.js and npm. Minimum version Node 20. You can find instructions on how to install both using nvm (Node Version Manager) for Linux, Mac, and WSL [here](https://github.com/nvm-sh/nvm). For Windows users, refer to Microsoft's guide to [Install NodeJS on Windows](https://docs.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-windows).
-* Install n8n with:
-  ```
-  npm install n8n -g
-  ```
-* Recommended: follow n8n's guide to [set up your development environment](https://docs.n8n.io/integrations/creating-nodes/build/node-development-environment/).
+Install the package in your n8n root folder:
 
-## Using this starter
+```bash
+npm install n8n-nodes-aws-athena-query
+```
 
-These are the basic steps for working with the starter. For detailed guidance on creating and publishing nodes, refer to the [documentation](https://docs.n8n.io/integrations/creating-nodes/).
+## Operations
 
-1. [Generate a new repository](https://github.com/n8n-io/n8n-nodes-starter/generate) from this template repository.
-2. Clone your new repo:
-   ```
-   git clone https://github.com/<your organization>/<your-repo-name>.git
-   ```
-3. Run `npm i` to install dependencies.
-4. Open the project in your editor.
-5. Browse the examples in `/nodes` and `/credentials`. Modify the examples, or replace them with your own nodes.
-6. Update the `package.json` to match your details.
-7. Run `npm run lint` to check for errors or `npm run lintfix` to automatically fix errors when possible.
-8. Test your node locally. Refer to [Run your node locally](https://docs.n8n.io/integrations/creating-nodes/test/run-node-locally/) for guidance.
-9. Replace this README with documentation for your node. Use the [README_TEMPLATE](README_TEMPLATE.md) to get started.
-10. Update the LICENSE file to use your details.
-11. [Publish](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry) your package to npm.
+The AWS Athena Query node supports the following operations:
 
-## More information
+### Query Execution
+- **Execute SQL Query**: Run SQL queries against your AWS Athena database
+  - Supports SELECT statements for all table formats
+  - Supports CREATE, INSERT, UPDATE, DELETE, MERGE INTO statements for Apache Iceberg tables only
+  - Built-in SQL editor with syntax highlighting
+  - Configurable query timeout
+  - Results returned in structured JSON format
 
-Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
+## Credentials
 
-## License
+You need to authenticate with AWS to use this node. Set up AWS credentials with the following permissions:
 
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+### Prerequisites
+1. An AWS account with access to Athena
+2. An S3 bucket for query results storage
+3. Proper IAM permissions
+
+### Required AWS Permissions
+Your AWS credentials need to contain at least the following IAM permissions:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetQueryResults",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "s3:GetBucketLocation",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:PutObject"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+### Setting up Credentials in n8n
+1. Go to **Credentials** in your n8n instance
+2. Click **Add Credential**
+3. Select **AWS** from the list
+4. Enter your AWS credentials:
+   - **Access Key ID**: Your AWS access key
+   - **Secret Access Key**: Your AWS secret key
+   - **Session Token**: (Optional) For temporary credentials
+
+## Compatibility
+
+- **Minimum n8n version**: 1.0.0
+- **Tested with n8n versions**: 1.0.0+
+- **AWS SDK version**: Uses AWS SDK v3 for optimal performance
+
+## Usage
+
+### Basic Query Example
+1. Add the **AWS Athena Query** node to your workflow
+2. Configure the following parameters:
+   - **Region**: Your AWS region (e.g., `us-east-1`)
+   - **Database Name**: Your Athena database (optional)
+   - **SQL Query**: Your SQL query
+   - **S3 Output Location**: S3 path for results (e.g., `s3://my-bucket/athena-results/`)
+   - **Query Timeout**: Maximum wait time in seconds (default: 300)
+
+### Sample SQL Query
+```sql
+SELECT 
+    customer_id,
+    product_name,
+    purchase_date,
+    amount
+FROM sales_data 
+WHERE purchase_date >= '2024-01-01'
+ORDER BY purchase_date DESC
+LIMIT 100
+```
+
+### Important Note on Query Types
+- **SELECT queries**: Work with all table formats (Parquet, CSV, JSON, ORC, etc.)
+- **INSERT/UPDATE/DELETE/MERGE**: Only work with **Apache Iceberg tables**
+- For regular tables, AWS Athena is primarily a read-only query service
+- If you need to modify data, consider using Apache Iceberg table format
+
+### Output Format
+The node returns results in the following structure:
+```json
+{
+  "queryExecutionId": "abc123-def456-ghi789",
+  "rowCount": 25,
+  "columns": ["customer_id", "product_name", "purchase_date", "amount"],
+  "results": [
+    {
+      "customer_id": "12345",
+      "product_name": "Widget A",
+      "purchase_date": "2024-01-15",
+      "amount": "29.99"
+    }
+  ]
+}
+```
+
+### Advanced Usage Tips
+- **Large Result Sets**: For queries returning many rows, consider using LIMIT clauses
+- **Partitioned Tables**: Use partition predicates to improve query performance
+- **Cost Optimization**: Monitor your query costs in AWS Cost Explorer
+- **Data Types**: All values are returned as strings; use n8n's data transformation features to convert types as needed
+
+### Error Handling
+The node handles common errors gracefully:
+- Query timeout errors
+- AWS permission issues
+- Invalid SQL syntax
+- S3 access problems
+
+Enable "Continue on Fail" in the node settings to handle errors in your workflow logic.
+
+## Resources
+
+* [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
+* [AWS Athena Documentation](https://docs.aws.amazon.com/athena/)
+* [AWS SDK for JavaScript v3](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-athena/)
+* [AWS Athena SQL Reference](https://docs.aws.amazon.com/athena/latest/ug/ddl-sql-reference.html)
