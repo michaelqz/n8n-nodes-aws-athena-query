@@ -58,7 +58,7 @@ export class AwsAthenaQuery implements INodeType {
 				name: 'query',
 				type: 'string',
 				default: '',
-				noDataExpression: true,
+				noDataExpression: false,
 				required: true,
 				typeOptions: {
 					editor: 'sqlEditor',
