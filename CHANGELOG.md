@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.3] - 2025-07-08
+## [0.1.5] - 2025-07-08
 ### Fixed
 - Updated error handling to use NodeOperationError and NodeApiError
 
