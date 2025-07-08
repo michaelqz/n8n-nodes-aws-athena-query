@@ -4,6 +4,11 @@ This is an n8n community node. It lets you execute SQL queries on AWS Athena in 
 
 AWS Athena is an interactive query service that makes it easy to analyze data in Amazon S3 using standard SQL. With this node, you can run SQL queries against your data lake and incorporate the results into your n8n workflows.
 
+**Key Features:**
+- ✅ **Zero external dependencies** - Uses native HTTP requests with AWS Signature V4 authentication
+- ✅ **Lightweight and fast** - No heavy SDK dependencies
+- ✅ **Full Athena API support** - Direct integration with AWS Athena REST API
+
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
 [Installation](#installation)  
@@ -82,7 +87,7 @@ Your AWS credentials need to contain at least the following IAM permissions:
 
 - **Minimum n8n version**: 1.0.0
 - **Tested with n8n versions**: 1.0.0+
-- **AWS SDK version**: Uses AWS SDK v3 for optimal performance
+- **Implementation**: Native HTTP requests with AWS Signature V4 authentication (no external dependencies)
 
 ## Usage
 
@@ -151,5 +156,5 @@ Enable "Continue on Fail" in the node settings to handle errors in your workflow
 
 * [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
 * [AWS Athena Documentation](https://docs.aws.amazon.com/athena/)
-* [AWS SDK for JavaScript v3](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-athena/)
+* [AWS Athena API Reference](https://docs.aws.amazon.com/athena/latest/APIReference/)
 * [AWS Athena SQL Reference](https://docs.aws.amazon.com/athena/latest/ug/ddl-sql-reference.html)
