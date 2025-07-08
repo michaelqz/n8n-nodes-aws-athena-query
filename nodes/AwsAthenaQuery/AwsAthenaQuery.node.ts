@@ -5,7 +5,7 @@ import type {
 	INodeTypeDescription,
 	IHttpRequestOptions,
 } from 'n8n-workflow';
-import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError, NodeApiError } from 'n8n-workflow';
 import { createHash, createHmac } from 'crypto';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,7 +217,20 @@ async function makeAthenaRequest(
 			errorType: error.constructor.name
 		};
 
-		throw new Error(`${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`);
+		if (error.response) {
+			// This is an API error from AWS - use NodeApiError
+			throw new NodeApiError(
+				executeFunctions.getNode(),
+				error,
+				{ message: `${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}` }
+			);
+		} else {
+			// This is a general operation error - use NodeOperationError
+			throw new NodeOperationError(
+				executeFunctions.getNode(),
+				`${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`
+			);
+		}
 	}
 }
 

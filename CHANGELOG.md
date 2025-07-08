@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.3] - 2025-07-08
+### Fixed
+- Updated error handling to use NodeOperationError and NodeApiError
+
 ## [0.1.2] - 2025-07-08
 ### Changed
 - Modified node to remove AWS SDK Dependency (@aws-sdk/client-athena)
