@@ -8,6 +8,7 @@ AWS Athena is an interactive query service that makes it easy to analyze data in
 - ✅ **Zero external dependencies** - Uses native HTTP requests with AWS Signature V4 authentication
 - ✅ **Lightweight and fast** - No heavy SDK dependencies
 - ✅ **Full Athena API support** - Direct integration with AWS Athena REST API
+- ✅ **Handles large result sets** - Automatic pagination of results; optional configurable row limit
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
@@ -138,7 +139,8 @@ The node returns results in the following structure:
 ```
 
 ### Advanced Usage Tips
-- **Large Result Sets**: For queries returning many rows, consider using LIMIT clauses
+- **Large Result Sets**: Results are paginated automatically (1000 rows per page, header on first page). Use the new
+  **Max Rows Returned** option to cap total rows without changing your SQL.
 - **Partitioned Tables**: Use partition predicates to improve query performance
 - **Cost Optimization**: Monitor your query costs in AWS Cost Explorer
 - **Data Types**: All values are returned as strings; use n8n's data transformation features to convert types as needed
