@@ -325,6 +325,34 @@ export class AwsAthenaQuery implements INodeType {
 				description: 'How to structure the query results for use in your workflow',
 				required: true,
 			},
+				{
+					displayName: 'Max Rows Returned',
+					name: 'maxRowsMode',
+					type: 'options',
+					options: [
+						{ name: 'No Limit', value: 'noLimit', description: 'Return all available rows (Warning: May be slow)' },
+						{ name: 'Limit Applied', value: 'limitApplied', description: 'Return up to a maximum number of rows' },
+					],
+					default: 'noLimit',
+					description: 'Control how many rows are returned from the query',
+					required: true,
+				},
+				{
+					displayName: 'Max Rows',
+					name: 'maxRows',
+					type: 'number',
+					default: 10000,
+					description: 'Maximum number of rows to return when limit is applied',
+					required: true,
+					displayOptions: {
+						show: {
+							maxRowsMode: ['limitApplied'],
+						},
+					},
+					typeOptions: {
+						minValue: 1,
+					},
+				},
 		],
 	};
 
@@ -391,6 +419,19 @@ export class AwsAthenaQuery implements INodeType {
 					};
 				}
 
+				// Read row limit settings
+				const maxRowsMode = this.getNodeParameter('maxRowsMode', itemIndex, 'noLimit') as string;
+				const maxRowsValue =
+					maxRowsMode === 'limitApplied'
+						? (this.getNodeParameter('maxRows', itemIndex) as number)
+						: undefined;
+
+				if (maxRowsMode === 'limitApplied') {
+					if (!Number.isInteger(maxRowsValue) || (maxRowsValue as number) <= 0) {
+						throw new NodeOperationError(this.getNode(), 'Max Rows must be a positive integer.');
+					}
+				}
+
 				// Start query execution
 				const startResponse = await makeAthenaRequest(
 					this,
@@ -451,19 +492,81 @@ export class AwsAthenaQuery implements INodeType {
 					}
 				}
 
-				// Get query results
-				const resultsResponse = await makeAthenaRequest(
-					this,
-					region,
-					'AmazonAthena.GetQueryResults',
-					{ QueryExecutionId: queryExecutionId },
-					credentials,
-				);
+				// Get query results with pagination (Athena returns up to 1000 rows per page including a header row on the first page)
+				let nextToken: string | undefined = undefined;
+				let pageIndex = 0;
+				let columns: string[] = [];
+				const parsedResults: Array<{ [key: string]: any }> = [];
 
-				const rows = resultsResponse.ResultSet?.Rows || [];
+				do {
+					const payload: any = { QueryExecutionId: queryExecutionId, MaxResults: 1000 };
+					if (nextToken) payload.NextToken = nextToken;
 
-				if (rows.length === 0) {
-					// No results returned
+					const resultsResponse = await makeAthenaRequest(
+						this,
+						region,
+						'AmazonAthena.GetQueryResults',
+						payload,
+						credentials,
+					);
+
+					const rows = resultsResponse.ResultSet?.Rows || [];
+
+					if (rows.length === 0) {
+						nextToken = resultsResponse.NextToken;
+						pageIndex += 1;
+						continue;
+					}
+
+					// On first page, extract header row as column names
+					let dataRows: any[] = rows;
+					if (pageIndex === 0) {
+						columns = rows[0]?.Data?.map((data: any) => data.VarCharValue || '') || [];
+						dataRows = rows.slice(1); // skip header on first page
+					}
+
+					for (const row of dataRows) {
+						const rowData = row.Data || [];
+						const parsedRow: { [key: string]: any } = {};
+
+						columns.forEach((column: any, index: number) => {
+							if (column) {
+								const cellData = rowData[index];
+								let value = null;
+								if (cellData) {
+									value =
+										cellData.VarCharValue ||
+										cellData.BigIntValue ||
+										cellData.BooleanValue ||
+										cellData.DateValue ||
+										cellData.DoubleValue ||
+										cellData.FloatValue ||
+										cellData.IntegerValue ||
+										cellData.TimestampValue ||
+										null;
+								}
+								parsedRow[column] = value;
+							}
+						});
+
+						parsedResults.push(parsedRow);
+						if (maxRowsMode === 'limitApplied' && (parsedResults.length >= (maxRowsValue as number))) {
+							// Stop collecting more rows; break out after current page
+							break;
+						}
+					}
+
+					// If we've reached the max rows, stop pagination
+					if (maxRowsMode === 'limitApplied' && (parsedResults.length >= (maxRowsValue as number))) {
+						nextToken = undefined;
+					} else {
+						nextToken = resultsResponse.NextToken;
+					}
+					pageIndex += 1;
+				} while (nextToken);
+
+				// If no data rows were returned
+				if (parsedResults.length === 0) {
 					if (outputFormat === 'rawFormat') {
 						resultItems.push({
 							json: {
@@ -474,51 +577,15 @@ export class AwsAthenaQuery implements INodeType {
 							},
 						});
 					}
-					// For tableFormat with no results, don't add any items
 					continue;
 				}
 
-				// Extract column names from the first row
-				const columns = rows[0]?.Data?.map((data: any) => data.VarCharValue || '') || [];
-
-				// Parse data rows (skip header row)
-				const parsedResults = rows.slice(1).map((row: any) => {
-					const rowData = row.Data || [];
-					const parsedRow: { [key: string]: any } = {};
-
-					columns.forEach((column: any, index: number) => {
-						if (column) {
-							const cellData = rowData[index];
-							// Handle different Athena data types
-							let value = null;
-							if (cellData) {
-								value = cellData.VarCharValue || 
-								        cellData.BigIntValue || 
-								        cellData.BooleanValue || 
-								        cellData.DateValue || 
-								        cellData.DoubleValue || 
-								        cellData.FloatValue || 
-								        cellData.IntegerValue || 
-								        cellData.TimestampValue || 
-								        null;
-							}
-							parsedRow[column] = value;
-						}
-					});
-
-					return parsedRow;
-				});
-
 				// Add results to output based on format
 				if (outputFormat === 'tableFormat') {
-					// Table format: each row becomes a separate item
-					parsedResults.forEach((row: any) => {
-						resultItems.push({
-							json: row,
-						});
-					});
+					for (const row of parsedResults) {
+						resultItems.push({ json: row });
+					}
 				} else {
-					// Raw format: return all data in one item with metadata
 					resultItems.push({
 						json: {
 							queryExecutionId,
