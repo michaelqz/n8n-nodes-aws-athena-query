@@ -162,7 +162,7 @@ async function makeAthenaRequest(
 		if (error.response) {
 			statusCode = error.response.statusCode || error.response.status || 'Unknown';
 			responseBody = error.response.body || error.response.data || 'No response body';
-			
+
 			// Try to parse AWS error response in multiple formats
 			try {
 				let errorBodyStr = '';
@@ -173,7 +173,7 @@ async function makeAthenaRequest(
 				} else {
 					errorBodyStr = String(responseBody);
 				}
-				
+
 				if (errorBodyStr) {
 					// Try parsing as JSON first
 					try {
@@ -196,7 +196,7 @@ async function makeAthenaRequest(
 			} catch (parseError) {
 				awsErrorMessage = `Parse error: ${parseError.message}`;
 			}
-			
+
 			errorMessage = `AWS Athena API Error (${statusCode}): ${awsErrorCode} - ${awsErrorMessage}`;
 		} else if (error.message) {
 			errorMessage = `Request Error: ${error.message}`;
@@ -214,21 +214,19 @@ async function makeAthenaRequest(
 			responseBody,
 			requestHeaders: signedHeaders,
 			originalError: error.message,
-			errorType: error.constructor.name
+			errorType: error.constructor.name,
 		};
 
 		if (error.response) {
 			// This is an API error from AWS - use NodeApiError
-			throw new NodeApiError(
-				executeFunctions.getNode(),
-				error,
-				{ message: `${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}` }
-			);
+			throw new NodeApiError(executeFunctions.getNode(), error, {
+				message: `${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
+			});
 		} else {
 			// This is a general operation error - use NodeOperationError
 			throw new NodeOperationError(
 				executeFunctions.getNode(),
-				`${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`
+				`${errorMessage}\nDebug Info: ${JSON.stringify(debugInfo, null, 2)}`,
 			);
 		}
 	}
@@ -271,6 +269,15 @@ export class AwsAthenaQuery implements INodeType {
 				default: '',
 				placeholder: 'Optional',
 				description: 'Name of the database to query. Leave empty to use the default database.',
+			},
+			{
+				displayName: 'Workgroup',
+				name: 'workgroup',
+				type: 'string',
+				default: '',
+				placeholder: 'primary',
+				description:
+					'Name of the Athena workgroup to use. Leave empty to use the default workgroup (primary).',
 			},
 			{
 				displayName: 'SQL Query',
@@ -325,34 +332,42 @@ export class AwsAthenaQuery implements INodeType {
 				description: 'How to structure the query results for use in your workflow',
 				required: true,
 			},
-				{
-					displayName: 'Max Rows Returned',
-					name: 'maxRowsMode',
-					type: 'options',
-					options: [
-						{ name: 'No Limit', value: 'noLimit', description: 'Return all available rows (Warning: May be slow)' },
-						{ name: 'Limit Applied', value: 'limitApplied', description: 'Return up to a maximum number of rows' },
-					],
-					default: 'noLimit',
-					description: 'Control how many rows are returned from the query',
-					required: true,
-				},
-				{
-					displayName: 'Max Rows',
-					name: 'maxRows',
-					type: 'number',
-					default: 10000,
-					description: 'Maximum number of rows to return when limit is applied',
-					required: true,
-					displayOptions: {
-						show: {
-							maxRowsMode: ['limitApplied'],
-						},
+			{
+				displayName: 'Max Rows Returned',
+				name: 'maxRowsMode',
+				type: 'options',
+				options: [
+					{
+						name: 'No Limit',
+						value: 'noLimit',
+						description: 'Return all available rows (Warning: May be slow)',
 					},
-					typeOptions: {
-						minValue: 1,
+					{
+						name: 'Limit Applied',
+						value: 'limitApplied',
+						description: 'Return up to a maximum number of rows',
+					},
+				],
+				default: 'noLimit',
+				description: 'Control how many rows are returned from the query',
+				required: true,
+			},
+			{
+				displayName: 'Max Rows',
+				name: 'maxRows',
+				type: 'number',
+				default: 10000,
+				description: 'Maximum number of rows to return when limit is applied',
+				required: true,
+				displayOptions: {
+					show: {
+						maxRowsMode: ['limitApplied'],
 					},
 				},
+				typeOptions: {
+					minValue: 1,
+				},
+			},
 		],
 	};
 
@@ -365,6 +380,7 @@ export class AwsAthenaQuery implements INodeType {
 				// Get node parameters
 				const region = this.getNodeParameter('region', itemIndex) as string;
 				const database = this.getNodeParameter('database', itemIndex) as string;
+				const workgroup = this.getNodeParameter('workgroup', itemIndex) as string;
 				const query = this.getNodeParameter('query', itemIndex) as string;
 				const s3OutputLocation = this.getNodeParameter('s3OutputLocation', itemIndex) as string;
 				const outputFormat = this.getNodeParameter(
@@ -400,7 +416,8 @@ export class AwsAthenaQuery implements INodeType {
 
 				// Generate a unique client request token for idempotency (minimum 32 characters required)
 				const timestamp = Date.now().toString();
-				const randomPart = Math.random().toString(36).substring(2, 17) + Math.random().toString(36).substring(2, 17);
+				const randomPart =
+					Math.random().toString(36).substring(2, 17) + Math.random().toString(36).substring(2, 17);
 				const clientRequestToken = `n8n-${timestamp}-${randomPart}`.substring(0, 64); // Ensure it's at least 32 chars, max 64
 
 				// Prepare query execution parameters
@@ -417,6 +434,11 @@ export class AwsAthenaQuery implements INodeType {
 					queryParams.QueryExecutionContext = {
 						Database: database,
 					};
+				}
+
+				// Add workgroup if provided
+				if (workgroup && workgroup.trim() !== '') {
+					queryParams.WorkGroup = workgroup;
 				}
 
 				// Read row limit settings
@@ -484,7 +506,11 @@ export class AwsAthenaQuery implements INodeType {
 					}
 
 					// Handle unexpected query states
-					if (queryStatus !== 'RUNNING' && queryStatus !== 'QUEUED' && queryStatus !== 'SUCCEEDED') {
+					if (
+						queryStatus !== 'RUNNING' &&
+						queryStatus !== 'QUEUED' &&
+						queryStatus !== 'SUCCEEDED'
+					) {
 						throw new NodeOperationError(
 							this.getNode(),
 							`Query ended with unexpected status: ${queryStatus}`,
@@ -550,14 +576,17 @@ export class AwsAthenaQuery implements INodeType {
 						});
 
 						parsedResults.push(parsedRow);
-						if (maxRowsMode === 'limitApplied' && (parsedResults.length >= (maxRowsValue as number))) {
+						if (
+							maxRowsMode === 'limitApplied' &&
+							parsedResults.length >= (maxRowsValue as number)
+						) {
 							// Stop collecting more rows; break out after current page
 							break;
 						}
 					}
 
 					// If we've reached the max rows, stop pagination
-					if (maxRowsMode === 'limitApplied' && (parsedResults.length >= (maxRowsValue as number))) {
+					if (maxRowsMode === 'limitApplied' && parsedResults.length >= (maxRowsValue as number)) {
 						nextToken = undefined;
 					} else {
 						nextToken = resultsResponse.NextToken;
